@@ -103,41 +103,7 @@ class QueryRequest(BaseModel):
 
 
 @app.post("/chat")
-async def chatbot(request: QueryRequest):
-    try:
-        result = await asyncio.to_thread(
-            agent_executor.invoke,
-            {"input": request.user_input}
-        )
-        return {"response": result["output"]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-# @app.post("/ask/stream")
-# async def ask_llm_stream(request: QueryRequest):
-#     try:
-#         async def event_generator():
-#             # Agent streaming (CORRECT)
-#             for step in agent_executor.stream(
-#                 {"input": request.user_input}
-#             ):
-#                 if "output" in step:
-#                     yield step["output"]
-#                 await asyncio.sleep(0)
-    
-#         return StreamingResponse(
-#             event_generator(),
-#             media_type="text/plain"
-#         )
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/ask/stream")
-async def ask_llm_stream(request: QueryRequest):
+async def stream_response(request: QueryRequest):
     async def event_generator():
         for step in agent_executor.stream({"input": request.user_input}):
             if "output" in step:
