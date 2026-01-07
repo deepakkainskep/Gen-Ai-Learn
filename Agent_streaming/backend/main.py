@@ -1,10 +1,13 @@
 from langchain_openai import AzureChatOpenAI
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.prompts import PromptTemplate
+from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+
 import asyncio
 from tavily import TavilyClient
 from langchain_core.tools import tool
@@ -13,7 +16,7 @@ import os
 
 load_dotenv()
 
-app = FastAPI(title="Azure ReAct Agent API")
+app = FastAPI(title="searching agent API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,37 +43,25 @@ You have access to the following tools:
 Tool names you can use:
 {tool_names}
 
-IMPORTANT:
-- You MUST ALWAYS call one of the available tools before producing a Final Answer.
-- Even if the answer seems obvious or simple, you are REQUIRED to use a tool.
-- You are NOT allowed to skip the Action step.
-
-Use the following format STRICTLY:
-
-Question: the user question
-Thought: you must decide which tool to use (tool usage is mandatory)
-Action: one of [{tool_names}]
-Action Input: input to the tool
-Observation: tool result
-Thought: final reasoning based on the tool output
-Final Answer: final answer to the user
-
-
-Rules:
-- If the user greets you, STILL call a tool and then reply politely and ask for an Azure question
-- If the question is NOT related to Azure, STILL call a tool and then reply:
-  "I can only help with Azure-related questions."
-- If the user provides Azure configuration/code/scripts:
-  1. Call a tool to analyze/search
-  2. Identify issues
-  3. Explain clearly
-  4. Suggest fixes
-  5. Recommend best practices
-- Keep answers simple and practical
+You MUST follow this format exactly:
 
 Question: {input}
+Thought: think about what to do
+Action: one of [{tool_names}]
+Action Input: input to the action
+Observation: result of the action
+Thought: final reasoning
+Final Answer: the final answer to the user
+
+Rules:
+- ALWAYS use this format
+- NEVER reply casually
+- NEVER skip Thought/Final Answer
+- Use tools when required
+
 {agent_scratchpad}
 """)
+
 
 
 @tool(description="Searches the web using Tavily")
@@ -111,8 +102,8 @@ class QueryRequest(BaseModel):
     user_input: str
 
 
-@app.post("/chatbot")
-async def ask_llm(request: QueryRequest):
+@app.post("/chat")
+async def chatbot(request: QueryRequest):
     try:
         result = await asyncio.to_thread(
             agent_executor.invoke,
@@ -121,3 +112,37 @@ async def ask_llm(request: QueryRequest):
         return {"response": result["output"]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# @app.post("/ask/stream")
+# async def ask_llm_stream(request: QueryRequest):
+#     try:
+#         async def event_generator():
+#             # Agent streaming (CORRECT)
+#             for step in agent_executor.stream(
+#                 {"input": request.user_input}
+#             ):
+#                 if "output" in step:
+#                     yield step["output"]
+#                 await asyncio.sleep(0)
+    
+#         return StreamingResponse(
+#             event_generator(),
+#             media_type="text/plain"
+#         )
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ask/stream")
+async def ask_llm_stream(request: QueryRequest):
+    async def event_generator():
+        for step in agent_executor.stream({"input": request.user_input}):
+            if "output" in step:
+                for char in step["output"]:
+                    yield char
+                    await asyncio.sleep(0)
+
+    return StreamingResponse(event_generator(), media_type="text/plain")
