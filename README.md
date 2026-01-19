@@ -21,4 +21,11 @@ This repository contains my learning and hands-on practice with **Generative AI*
 ```bash
 uvicorn main:app --reload
 
+### Frontend (React)
+```bash
+npm run dev
+
+### Streamlit
+``` bash 
+streamlit run file.py
 
