@@ -8,6 +8,7 @@ This repository contains my learning and hands-on practice with **Generative AI*
 - Prompt Engineering
 - Tool Calling
 - Agents (ReAct, AgentExecutor)
+- RAG (Retrieval-Augmented Generation )
 
 ## 🛠 Tech Stack
 - Python, FastAPI
