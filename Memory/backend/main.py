@@ -136,3 +136,8 @@ async def stream_response(request: QueryRequest):
             memory_function.store_message(request.user_id, "assistant", full_response)
 
     return StreamingResponse(event_generator(), media_type="text/plain")
+
+
+
+
+

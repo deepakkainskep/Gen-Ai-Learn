@@ -89,46 +89,46 @@ config1 = {
 
 # run 
 state = {"messages": ""}
-while True:
-    try:
-        user_input = input("Enter query.. ")
-        if user_input.lower() in ["quit", "exit", "thanks", "thankyou", "thank you"]:
-            print("Bye!")
-            break
-
-        state["messages"] += "\nUser: " + user_input
-        graph.invoke(state, config=config1)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        break
-
-
-
-
-
-# class ChatRequest(BaseModel):
-#     question: str
-
-# @app.post("/chat")
-# async def chat_memory(request: ChatRequest):
-#     state = {"messages": ""}
-#     while True:
-#         try:
-#             user_input = input("Enter query.. ")
-#             if user_input.lower() in ["quit", "exit", "thanks", "thankyou", "thank you"]:
-#                 print("Bye!")
-#                 break
-
-#             state["messages"] += "\nUser: " + user_input
-#             graph.invoke(state, config=config1)
-
-#         except Exception as e:
-#             print(f"An error occurred: {e}")
+# while True:
+#     try:
+#         user_input = input("Enter query.. ")
+#         if user_input.lower() in ["quit", "exit", "thanks", "thankyou", "thank you"]:
+#             print("Bye!")
 #             break
 
+#         state["messages"] += "\nUser: " + user_input
+#         graph.invoke(state, config=config1)
+
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         break
 
 
-# # png_bytes = graph.get_graph().draw_mermaid_png(draw_method=MermaidDrawMethod.API)
-# # with open("main.png", "wb") as f:
-# #     f.write(png_bytes)
+
+
+
+class ChatRequest(BaseModel):
+    question: str
+
+@app.post("/chat")
+async def chat_memory(request: ChatRequest):
+    state = {"messages": ""}
+    while True:
+        try:
+            user_input = input("Enter query.. ")
+            if user_input.lower() in ["quit", "exit", "thanks", "thankyou", "thank you"]:
+                print("Bye!")
+                break
+
+            state["messages"] += "\nUser: " + user_input
+            graph.invoke(state, config=config1)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            break
+
+
+
+png_bytes = graph.get_graph().draw_mermaid_png(draw_method=MermaidDrawMethod.API)
+with open("main.png", "wb") as f:
+    f.write(png_bytes)
