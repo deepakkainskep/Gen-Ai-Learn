@@ -74,22 +74,7 @@ vectorstore.persist()
 
 logger.info("Vector store created and persisted")
 
-# prompt =  PromptTemplate(
-#     input_variables=["context","question"],
-#     template="""
-#     you are a helpful pdf based assisant.
-#     answer the question based on the context.
-#     if the answer is not found in the context
-#     say: 'sorry i could not find the answer in the document'.
-# context:
-# {context}
 
-# question:
-# {question}
-
-# Answer:
-# """   
-# )
 
 prompt = PromptTemplate(
     input_variables=["context", "question"],
