@@ -5,7 +5,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  storedMemory?: string | null;
+  storedMemory?: Record<string, string> | null;
 }
 
 interface ChatRequest {
@@ -16,13 +16,13 @@ interface ChatRequest {
 
 interface ChatResponse {
   answer: string;
-  stored_memory: string | null;
+  stored_memory: Record<string, string> | null;
 }
 
 interface SessionData {
   sessionId: string;
   userID: string;
-  memories: string[];
+  memories: Record<string, string>[];
   messages: Message[];
   createdAt: Date;
 }
@@ -38,6 +38,7 @@ const generateSessionId = (): string => {
 };
 
 const Chatbot: React.FC = () => {
+  const [userId, setUserId] = useState(() => localStorage.getItem('chatbot_user_id') || `user_${Date.now()}`);
   const [sessions, setSessions] = useState<SessionData[]>(() => {
     const saved = localStorage.getItem('chatbot_sessions');
     if (saved) {
@@ -64,7 +65,6 @@ const Chatbot: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => localStorage.getItem('current_session_id') || '');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState(() => localStorage.getItem('chatbot_user_id') || `user_${Date.now()}`);
   const [showSettings, setShowSettings] = useState(false);
   const [tempUserId, setTempUserId] = useState(userId);
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('chatbot_api_url') || 'http://127.0.0.1:8000');
@@ -352,7 +352,7 @@ const Chatbot: React.FC = () => {
                   <div className="mt-2 space-y-1">
                     {session.memories.slice(0, 2).map((memory, idx) => (
                       <div key={idx} className="text-xs text-purple-300 truncate">
-                        • {memory}
+                        • {typeof memory === 'object' ? JSON.stringify(memory) : memory}
                       </div>
                     ))}
                     {session.memories.length > 2 && (
@@ -464,7 +464,7 @@ const Chatbot: React.FC = () => {
                   {message.storedMemory && (
                     <div className="mt-2 bg-green-900/30 border border-green-700/50 rounded-lg px-3 py-2 text-xs text-green-300 flex items-start gap-2">
                       <Database className="w-3 h-3 mt-0.5 " />
-                      <span><strong>Stored:</strong> {message.storedMemory}</span>
+                      <span><strong>Stored:</strong> {typeof message.storedMemory === 'object' ? JSON.stringify(message.storedMemory) : message.storedMemory}</span>
                     </div>
                   )}
                   
