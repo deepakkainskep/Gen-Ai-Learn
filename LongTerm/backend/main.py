@@ -6,6 +6,12 @@ from agent.agent import agent_executor, llm
 from memory.short_term_memory import ShortTermMemory
 from memory.long_term_memory import LongTermMemory
 
+from llm_guard.input_scanners import Toxicity as InputToxicity
+from llm_guard.input_scanners.toxicity import MatchType as InputMatchType
+
+from llm_guard.output_scanners import Toxicity as OutputToxicity
+from llm_guard.output_scanners.toxicity import MatchType as OutputMatchType
+
 
 app = FastAPI(title="LLM Memory System")
 
@@ -17,9 +23,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 stm = ShortTermMemory()
 ltm = LongTermMemory(llm)
+
+#  input guardrail 
+input_toxicity_scanner = InputToxicity(
+    threshold=0.5,
+    match_type=InputMatchType.SENTENCE
+)
+
+#  output guardrail 
+output_toxicity_scanner = OutputToxicity(
+    threshold=0.5,
+    match_type=OutputMatchType.SENTENCE
+)
 
 
 class QueryRequest(BaseModel):
@@ -28,35 +45,14 @@ class QueryRequest(BaseModel):
     user_input: str
 
 
-def llm_guardrail_check(user_input: str) -> bool:
-    """
-    Returns True if input is UNSAFE, False if SAFE
-    """
-    guardrail_prompt = f"""
-You are a strict AI safety classifier.
+def input_guardrail_check(text: str):
+    sanitized, is_valid, risk_score = input_toxicity_scanner.scan(text)
+    return sanitized, is_valid, risk_score
 
-Classify the following user input as ONLY one word:
-SAFE
-UNSAFE
 
-UNSAFE includes:
-- Violence or killing
-- Harm to humans or animals
-- Illegal activities
-- Instructions enabling wrongdoing
-- Self-harm or suicide
-
-User input:
-\"\"\"{user_input}\"\"\"
-
-Answer with only SAFE or UNSAFE.
-"""
-
-    try:
-        result = llm.invoke(guardrail_prompt).content.strip().upper()
-        return result == "UNSAFE"
-    except Exception:
-        return True  
+def output_guardrail_check(prompt: str, output: str):
+    sanitized, is_valid, risk_score = output_toxicity_scanner.scan(prompt, output)
+    return sanitized, is_valid, risk_score
 
 
 @app.post("/chat")
@@ -64,17 +60,18 @@ async def chat(req: QueryRequest):
     if not req.user_input.strip():
         raise HTTPException(status_code=400, detail="Empty input")
 
+    #  input guardrail 
+    sanitized_prompt, input_valid, input_risk = input_guardrail_check(req.user_input)
 
-    is_unsafe = llm_guardrail_check(req.user_input)
-
-    if is_unsafe:
+    if not input_valid:
         return {
-            "answer": "I can’t help with violence, harm, or illegal activities.",
+            "answer": "I can’t help with harmful, abusive, or unsafe content.",
             "stored_memory": None,
+            "input_risk_score": input_risk,
+            "output_risk_score": None,
             "conversation": stm.fetch(req.user_id, req.session_id),
         }
 
-    # FETCH MEMORY 
     user_memory = ltm.fetch(req.user_id)
     conversation = stm.fetch(req.user_id, req.session_id)
 
@@ -86,25 +83,41 @@ Conversation:
 {conversation}
 
 User Question:
-{req.user_input}
+{sanitized_prompt}
 """
 
-    #  SAVE USER MESSAGE 
-    stm.save(req.user_id, req.session_id, "user", req.user_input)
+    stm.save(req.user_id, req.session_id, "user", sanitized_prompt)
 
-    #  AGENT EXECUTION 
     result = agent_executor.invoke({"input": final_input})
     answer = result["output"]
 
-    #  SAVE ASSISTANT MESSAGE 
+    #  output guardrail 
+    sanitized_answer, output_valid, output_risk = output_guardrail_check(
+        sanitized_prompt,
+        answer
+    )
+
+    if not output_valid:
+        stm.save(req.user_id, req.session_id, "assistant", "[BLOCKED BY OUTPUT GUARDRAIL]")
+        return {
+            "answer": "I can’t help with harmful, abusive, or unsafe content.",
+            "stored_memory": None,
+            "input_risk_score": input_risk,
+            "output_risk_score": output_risk,
+            "conversation": stm.fetch(req.user_id, req.session_id),
+        }
+
+    answer = sanitized_answer
     stm.save(req.user_id, req.session_id, "assistant", answer)
 
-    #  LONG-TERM MEMORY 
-    extracted = ltm.extract(req.user_input)
+    #  memory extraction 
+    extracted = ltm.extract(answer)
     ltm.save(req.user_id, extracted)
 
     return {
         "answer": answer,
         "stored_memory": extracted,
+        "input_risk_score": input_risk,
+        "output_risk_score": output_risk,
         "conversation": stm.fetch(req.user_id, req.session_id),
     }
