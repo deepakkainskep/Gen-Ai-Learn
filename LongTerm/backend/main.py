@@ -3,17 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agent.agent import agent_executor, llm
-from memory.short_term_memory import ShortTermMemory
 from memory.long_term_memory import LongTermMemory
-
-from llm_guard.input_scanners import Toxicity as InputToxicity
-from llm_guard.input_scanners.toxicity import MatchType as InputMatchType
-
-from llm_guard.output_scanners import Toxicity as OutputToxicity
-from llm_guard.output_scanners.toxicity import MatchType as OutputMatchType
+from memory.short_term_memory import ShortTermMemory
+from guardrails.toxicity_guardrails import ToxicityGuardrails
+from cache.redis_cache import RedisCache
 
 
-app = FastAPI(title="LLM Memory System")
+app = FastAPI(title="LLM Agent with Redis Cache")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,20 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-stm = ShortTermMemory()
+# components
 ltm = LongTermMemory(llm)
 
-#  input guardrail 
-input_toxicity_scanner = InputToxicity(
-    threshold=0.5,
-    match_type=InputMatchType.SENTENCE
-)
+stm = ShortTermMemory()
 
-#  output guardrail 
-output_toxicity_scanner = OutputToxicity(
-    threshold=0.5,
-    match_type=OutputMatchType.SENTENCE
-)
+guardrails = ToxicityGuardrails()
+
+cache = RedisCache()
 
 
 class QueryRequest(BaseModel):
@@ -45,23 +35,13 @@ class QueryRequest(BaseModel):
     user_input: str
 
 
-def input_guardrail_check(text: str):
-    sanitized, is_valid, risk_score = input_toxicity_scanner.scan(text)
-    return sanitized, is_valid, risk_score
-
-
-def output_guardrail_check(prompt: str, output: str):
-    sanitized, is_valid, risk_score = output_toxicity_scanner.scan(prompt, output)
-    return sanitized, is_valid, risk_score
-
-
 @app.post("/chat")
 async def chat(req: QueryRequest):
     if not req.user_input.strip():
         raise HTTPException(status_code=400, detail="Empty input")
 
-    #  input guardrail 
-    sanitized_prompt, input_valid, input_risk = input_guardrail_check(req.user_input)
+    # Input guardrail
+    sanitized_prompt, input_valid, input_risk = guardrails.check_input(req.user_input)
 
     if not input_valid:
         return {
@@ -84,40 +64,56 @@ Conversation:
 
 User Question:
 {sanitized_prompt}
-"""
+""".strip()
 
+    # Redis cache
+    cached_answer = cache.get(sanitized_prompt)
+
+    if cached_answer:
+        answer = cached_answer
+        cache_status = "hit"
+        print("🟢 CACHE HIT")
+    else:
+        result = agent_executor.invoke({"input": final_input})
+        answer = result["output"]
+        cache.set(sanitized_prompt, answer)
+        cache_status = "miss"
+        print("🔴 CACHE MISS")
+
+    # Save user message
     stm.save(req.user_id, req.session_id, "user", sanitized_prompt)
 
-    result = agent_executor.invoke({"input": final_input})
-    answer = result["output"]
-
-    #  output guardrail 
-    sanitized_answer, output_valid, output_risk = output_guardrail_check(
-        sanitized_prompt,
-        answer
+    # Output guardrail
+    sanitized_answer, output_valid, output_risk = guardrails.check_output(
+        sanitized_prompt, answer
     )
 
     if not output_valid:
-        stm.save(req.user_id, req.session_id, "assistant", "[BLOCKED BY OUTPUT GUARDRAIL]")
+        stm.save(
+            req.user_id,
+            req.session_id,
+            "assistant",
+            "[BLOCKED BY OUTPUT GUARDRAIL]",
+        )
         return {
             "answer": "I can’t help with harmful, abusive, or unsafe content.",
             "stored_memory": None,
             "input_risk_score": input_risk,
             "output_risk_score": output_risk,
             "conversation": stm.fetch(req.user_id, req.session_id),
+            "cache": cache_status,
         }
 
-    answer = sanitized_answer
-    stm.save(req.user_id, req.session_id, "assistant", answer)
+    stm.save(req.user_id, req.session_id, "assistant", sanitized_answer)
 
-    #  memory extraction 
-    extracted = ltm.extract(answer)
+    extracted = ltm.extract(sanitized_prompt)
     ltm.save(req.user_id, extracted)
 
     return {
-        "answer": answer,
+        "answer": sanitized_answer,
         "stored_memory": extracted,
         "input_risk_score": input_risk,
         "output_risk_score": output_risk,
         "conversation": stm.fetch(req.user_id, req.session_id),
+        "cache": cache_status,
     }
