@@ -1,9 +1,9 @@
 import redis
 import hashlib
-
+from config.config import settings
 
 class RedisCache:
-    def __init__(self, host="localhost", port=6379, ttl=300):
+    def __init__(self, host=settings.REDIS_HOST, port=settings.REDIS_PORT, ttl=300):
         self.client = redis.Redis(
             host=host,
             port=port,

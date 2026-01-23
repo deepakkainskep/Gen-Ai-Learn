@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     
     TAVILY_API_KEY: str
     MONGODB_CONNECTION_STRING:str
+    REDIS_HOST: str 
+    REDIS_PORT: int
  
     class Config:
         env_file = ".env"
