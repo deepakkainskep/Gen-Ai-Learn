@@ -1,19 +1,7 @@
-import os
-from langchain_openai import AzureChatOpenAI
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.prompts import PromptTemplate
 from tools.tavily_search import tavily_search
-from dotenv import load_dotenv
-
-load_dotenv()   
-
-llm = AzureChatOpenAI(
-    api_key=os.environ["AZURE_OPENAI_API_KEY"],
-    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-    model="gpt-4.1",
-    api_version="2024-02-01",
-    temperature=0,
-)
+from llm.llm import llm
 
 tools = [tavily_search]
 
